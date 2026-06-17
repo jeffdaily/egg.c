@@ -3,23 +3,51 @@
 #include <stdint.h>
 #include <math.h>
 #include <time.h>
+#include <signal.h>
+#ifndef _WIN32
+#include <unistd.h>
+#else
+// Windows: provide clock_gettime(CLOCK_MONOTONIC, ...) via QueryPerformanceCounter.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#ifndef CLOCK_MONOTONIC
+#define CLOCK_MONOTONIC 1
+static inline int clock_gettime(int, struct timespec *ts) {
+    static LARGE_INTEGER freq = {0};
+    if (!freq.QuadPart) QueryPerformanceFrequency(&freq);
+    LARGE_INTEGER t; QueryPerformanceCounter(&t);
+    ts->tv_sec  = (time_t)(t.QuadPart / freq.QuadPart);
+    ts->tv_nsec = (long)((t.QuadPart % freq.QuadPart) * 1000000000LL / freq.QuadPart);
+    return 0;
+}
+#endif
+#endif
+
+#include "egg_hip_compat.cuh"
+#if !defined(__HIP__)
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
-#include <signal.h>
-#include <unistd.h>
-
 #include <cub/cub.cuh>
+#endif
+
 #include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/execution_policy.h>
 #include <thrust/functional.h>
 
+#include "egg_warp_compat.cuh"
+
 volatile sig_atomic_t keep_running = 1;
 
 void handle_sigint(int sig) {
     const char msg[] = "\n[SIGINT] Interrupt received. Stopping after current step...\n";
+#ifdef _WIN32
+    fputs(msg, stdout);
+#else
     write(STDOUT_FILENO, msg, sizeof(msg)-1);
+#endif
     keep_running = 0;
 }
 
@@ -185,11 +213,11 @@ __device__ __forceinline__ int8_t clip(long long a) {
     return (a > MAX_VAL) ? MAX_VAL : ((a < MIN_VAL) ? MIN_VAL : (int8_t)a);
 }
 
-// Helper to broadcast 64-bit value from a lane to all threads in warp
+// Helper to broadcast 64-bit value from a lane to all threads in the logical
+// 32-lane warp. Delegates to the width-32 compat shim so it is correct on
+// wave64 (two logical warps per physical wavefront) and wave32 alike.
 __device__ __forceinline__ long long warpBroadcast(long long val, int src_lane) {
-    int lo = __shfl_sync(0xFFFFFFFF, (int)val, src_lane);
-    int hi = __shfl_sync(0xFFFFFFFF, (int)(val >> 32), src_lane);
-    return ((long long)hi << 32) | (unsigned int)lo;
+    return eggWarpBroadcast(val, src_lane);
 }
 
 extern __shared__ int8_t s_mem[]; 
@@ -444,8 +472,10 @@ __global__ void __launch_bounds__(BLOCK_THREADS) train_sequence_kernel(
 
     int8_t *my_s_ptr = &s_mem[warp_id * SHARED_STRIDE];
 
-    // CUB WarpReduce
-    typedef cub::WarpReduce<long long> WarpReduce;
+    // CUB WarpReduce pinned to the 32-lane logical warp (hipCUB defaults the
+    // logical width to the physical wavefront, 64 on gfx90a, which would sum
+    // two perturbations together).
+    typedef EggWarpReduce<long long> WarpReduce;
     __shared__ typename WarpReduce::TempStorage temp_storage[BLOCK_THREADS / WARP_SIZE];
     
     // Load State
@@ -945,6 +975,13 @@ int main() {
     
     printf("Starting EGGROLL CUDA Training (Batch=%d)...\n", BATCH);
     long max_steps = (ds.length - 1) / SEQ_LEN;
+
+    // Deterministic-seed override for reproducibility checks. When EGG_FIXED_SEED
+    // is set the per-step seed is a pure function of (fixed_seed, step) instead of
+    // wall-clock time, so two runs produce an identical loss sequence -- the
+    // decisive fingerprint that the 32-lane warp masks/reduces are correct.
+    const char *fixed_seed_env = getenv("EGG_FIXED_SEED");
+    uint32_t fixed_seed_base = fixed_seed_env ? (uint32_t)strtoul(fixed_seed_env, NULL, 0) : 0;
     
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
@@ -954,7 +991,7 @@ int main() {
         struct timespec t0, t1, t2, t3;
         clock_gettime(CLOCK_MONOTONIC, &t0);
 
-        uint32_t seed = (uint32_t)time(NULL) ^ (step * 0x9e3779b9);
+        uint32_t seed = (fixed_seed_env ? fixed_seed_base : (uint32_t)time(NULL)) ^ (step * 0x9e3779b9);
         int start_idx = step * SEQ_LEN;
         
         int threads_per_block = BLOCK_THREADS;

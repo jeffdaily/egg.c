@@ -37,6 +37,13 @@ nvcc -O3 full_cuda_train_egg.cu -o egg_cuda
 ./egg_cuda
 ```
 
+#### AMD GPU (ROCm/HIP)
+The same `.cu` source builds for AMD GPUs with `hipcc`; the HIP-specific code is guarded so the NVIDIA build above is unchanged. Pass your GPU's architecture to `--offload-arch` (e.g. `gfx90a` for MI200, `gfx1100` for RDNA3, `gfx1201` for RDNA4); pass it more than once to build a single binary that runs on several architectures.
+```bash
+hipcc -O3 --offload-arch=gfx1100 -x hip full_cuda_train_egg.cu -o egg_hip
+./egg_hip
+```
+
 ![Training Output](_imgs_/egg_train.jpeg)
 
 <a id="advanced-implementations"></a>
