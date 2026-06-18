@@ -38,7 +38,7 @@ void init_tables() {
         h_ACT_LUT[i] = (int8_t)((val > 127) ? 127 : ((val < -127) ? -127 : val));
     }
 
-    for (int t = 0; t < SEQ_LEN; t++) {
+    for (int t = 0; t < ROPE_LUT_MAX_LEN; t++) {
         for (int i = 0; i < HEAD_DIM / 2; i++) {
             double theta = pow(10000.0, -2.0 * i / HEAD_DIM);
             double alpha = t * theta;

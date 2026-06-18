@@ -73,7 +73,14 @@
 #  define ROPE_SCALE_BIT 20
 #endif
 #define ROPE_SCALE (1 << ROPE_SCALE_BIT)
-#define ROPE_LUT_SIZE (SEQ_LEN * (HEAD_DIM / 2) * 2)
+// The generate kernel runs for gen_seed_len + gen_output_len positions (96 by
+// default), beyond the SEQ_LEN training window, so the RoPE LUT must cover the
+// max generation position to avoid an out-of-bounds index in apply_rope_integer.
+#ifndef MAX_GEN_LEN
+#  define MAX_GEN_LEN 96
+#endif
+#define ROPE_LUT_MAX_LEN (MAX_GEN_LEN > SEQ_LEN ? MAX_GEN_LEN : SEQ_LEN)
+#define ROPE_LUT_SIZE (ROPE_LUT_MAX_LEN * (HEAD_DIM / 2) * 2)
 
 // Seed Offsets
 #define SEED_OFF_EMB 0
