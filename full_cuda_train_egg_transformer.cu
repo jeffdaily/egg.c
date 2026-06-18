@@ -768,9 +768,16 @@ int main() {
     printf("Starting Transformer Training (Pop=%d, Dim=%d)...\n", POPULATION_SIZE, HIDDEN_DIM);
     long max_steps = (ds.length - 1) / SEQ_LEN;
 
+    // Deterministic-seed override for reproducibility checks. When EGG_FIXED_SEED
+    // is set the per-step seed is a pure function of (fixed_seed, step) instead of
+    // wall-clock time, so two runs produce an identical loss sequence -- the
+    // decisive fingerprint that the 32-lane warp masks/reduces are correct.
+    const char *fixed_seed_env = getenv("EGG_FIXED_SEED");
+    uint32_t fixed_seed_base = fixed_seed_env ? (uint32_t)strtoul(fixed_seed_env, NULL, 0) : 0;
+
     for(long step=0; step<max_steps && keep_running; step++) {
         struct timespec t0, t1; clock_gettime(CLOCK_MONOTONIC, &t0);
-        uint32_t seed = (uint32_t)time(NULL) ^ (step * 0x12345678);
+        uint32_t seed = (fixed_seed_env ? fixed_seed_base : (uint32_t)time(NULL)) ^ (step * 0x12345678);
         
         // 6KB Shared Mem (2*Hidden + 256 + MLP Buffer)
         size_t sm_size = 2 * HIDDEN_DIM + 512 + (4*HIDDEN_DIM); 
