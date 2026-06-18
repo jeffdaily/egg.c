@@ -33,6 +33,23 @@ __device__ __forceinline__ int eggShflSync(int v, int src_lane) {
     return __shfl_sync(EGG_FULL_MASK, v, src_lane, EGG_WARP_SIZE);
 }
 
+// Width-32 shuffle-down for the transformer attention head reductions: each head
+// is reduced inside one 32-lane logical warp (off starts at 16). Pinning width to
+// EGG_WARP_SIZE keeps the two logical warps that share a wave64 wavefront from
+// mixing their partial sums; on NVIDIA / wave32 the explicit width is a no-op.
+template <typename T>
+__device__ __forceinline__ T eggShflDownSync(T v, int off) {
+    return __shfl_down_sync(EGG_FULL_MASK, v, off, EGG_WARP_SIZE);
+}
+
+// Width-32 XOR shuffle for the RoPE neighbor-pair exchange (lane_mask 1). The
+// partner is the adjacent lane within the same 32-lane logical warp; the explicit
+// width plus the wavefront-wide mask keeps the swap inside the logical warp.
+template <typename T>
+__device__ __forceinline__ T eggShflXorSync(T v, int lane_mask) {
+    return __shfl_xor_sync(EGG_FULL_MASK, v, lane_mask, EGG_WARP_SIZE);
+}
+
 __device__ __forceinline__ long long eggWarpBroadcast(long long val, int src_lane) {
     int lo = eggShflSync((int)val, src_lane);
     int hi = eggShflSync((int)(val >> 32), src_lane);
