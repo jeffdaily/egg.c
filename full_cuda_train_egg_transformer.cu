@@ -3,8 +3,13 @@
 #include <stdint.h>
 #include <math.h>
 #include <time.h>
+#if defined(__HIP__)
+#include "egg_hip_compat.cuh"
+#include "egg_warp_compat.cuh"
+#else
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
+#endif
 #include <signal.h>
 #include <unistd.h>
 #include <sys/time.h>
@@ -16,7 +21,9 @@
 #include <thrust/transform_reduce.h>
 #include <thrust/execution_policy.h>
 #include <thrust/functional.h>
+#if !defined(__HIP__)
 #include <cub/cub.cuh>
+#endif
 
 volatile sig_atomic_t keep_running = 1;
 
@@ -269,7 +276,11 @@ __global__ void __launch_bounds__(MAX_BLOCK_THREADS) train_sequence_kernel(
                  
                  // Reduce across head (Head Size 64, Warp 32)
                  // Need shuffle to reduce 64 to 1.
+#if defined(__HIP__)
+                 for (int off = 16; off > 0; off /= 2) df += eggShflDownSync(df, off);
+#else
                  for (int off = 16; off > 0; off /= 2) df += __shfl_down_sync(0xFFFFFFFF, df, off);
+#endif
                  
                  // Lane 0 of each warp has a partial sum for that warp's head-part.
                  // Lane 0 (tid % 32 == 0).
@@ -538,7 +549,11 @@ __global__ void generate_sequence_kernel(
             for(int ctx=0; ctx <= t; ctx++) {
                 ActType k_ctx = lkv[ctx*HIDDEN_DIM + tid];
                 AccumType df = (AccumType)qv * k_ctx;
+#if defined(__HIP__)
+                for (int off = 16; off > 0; off /= 2) df += eggShflDownSync(df, off);
+#else
                 for (int off = 16; off > 0; off /= 2) df += __shfl_down_sync(0xFFFFFFFF, df, off);
+#endif
                 if ((tid % 32) == 0) atomicAdd((int32_t*)&s_scores[h*4], (int32_t)df);
                 __syncthreads();
 

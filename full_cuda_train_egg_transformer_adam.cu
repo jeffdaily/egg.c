@@ -3,8 +3,13 @@
 #include <stdint.h>
 #include <math.h>
 #include <time.h>
+#if defined(__HIP__)
+#include "egg_hip_compat.cuh"
+#include "egg_warp_compat.cuh"
+#else
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
+#endif
 #include <signal.h>
 #include <unistd.h>
 #include <sys/time.h>
@@ -16,7 +21,9 @@
 #include <thrust/transform_reduce.h>
 #include <thrust/execution_policy.h>
 #include <thrust/functional.h>
+#if !defined(__HIP__)
 #include <cub/cub.cuh>
+#endif
 
 #include "egg_debug_printer.h"
 #include "egg_adaptive_normalize.h"
@@ -420,7 +427,11 @@ __device__ __forceinline__ AccumType apply_rope_integer(AccumType val, int t, in
     int32_t c = d_ROPE_LUT[lut_idx];     // Cosine
     int32_t s = d_ROPE_LUT[lut_idx + 1]; // Sine
 
+#if defined(__HIP__)
+    AccumType neighbor_val = eggShflXorSync(val, 1);
+#else
     AccumType neighbor_val = __shfl_xor_sync(0xFFFFFFFF, val, 1);
+#endif
     
     int64_t res;
     if (is_odd == 0) {
@@ -561,7 +572,11 @@ __device__ void compute_attention(
     // Pass 1
     for(int ctx=0; ctx <= t; ctx++) {
         AccumType df = (AccumType)qv * lkv_k[ctx*HIDDEN_DIM + tid];
+#if defined(__HIP__)
+        for (int off = 16; off > 0; off /= 2) df += eggShflDownSync(df, off);
+#else
         for (int off = 16; off > 0; off /= 2) df += __shfl_down_sync(0xFFFFFFFF, df, off);
+#endif
         if ((tid % 32) == 0) atomicAdd(&s_attn[h], (int32_t)df);
         __syncthreads();
         if (tid < N_HEADS) { atomicMax(&s_h_max[tid], s_attn[tid]); s_attn[tid] = 0; }
@@ -576,7 +591,11 @@ __device__ void compute_attention(
 
     for(int ctx=0; ctx <= t; ctx++) {
         AccumType df = (AccumType)qv * lkv_k[ctx*HIDDEN_DIM + tid];
+#if defined(__HIP__)
+        for (int off = 16; off > 0; off /= 2) df += eggShflDownSync(df, off);
+#else
         for (int off = 16; off > 0; off /= 2) df += __shfl_down_sync(0xFFFFFFFF, df, off);
+#endif
         if ((tid % 32) == 0) atomicAdd(&s_attn[h], (int32_t)df);
         __syncthreads();
         int32_t wt = softmax_exp_lookup((s_attn[h] >> SHIFT_ATTN) - (my_h_max >> SHIFT_ATTN));
