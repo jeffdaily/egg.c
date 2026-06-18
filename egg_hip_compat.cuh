@@ -25,6 +25,7 @@ typedef hipDeviceProp_t cudaDeviceProp;
 
 #define cudaSuccess hipSuccess
 #define cudaGetErrorString hipGetErrorString
+#define cudaGetLastError hipGetLastError
 #define cudaGetDeviceProperties hipGetDeviceProperties
 #define cudaDeviceSynchronize hipDeviceSynchronize
 #define cudaMalloc hipMalloc
@@ -37,6 +38,44 @@ typedef hipDeviceProp_t cudaDeviceProp;
 #define cudaMemcpyHostToDevice hipMemcpyHostToDevice
 #define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
 #define cudaMemcpyDeviceToDevice hipMemcpyDeviceToDevice
+
+// Multi-GPU and stream/async surface the replicated data-parallel mgpu trainer
+// uses: each device gets its own stream, model copy and cuBLAS handle, fitness is
+// aggregated through host pinned memory, then broadcast back per device. No NCCL,
+// no peer access -- these are all 1:1 hip* runtime symbols.
+typedef hipStream_t cudaStream_t;
+#define cudaSetDevice hipSetDevice
+#define cudaGetDeviceCount hipGetDeviceCount
+#define cudaStreamCreate hipStreamCreate
+#define cudaStreamDestroy hipStreamDestroy
+#define cudaStreamSynchronize hipStreamSynchronize
+#define cudaMallocHost hipHostMalloc
+#define cudaFreeHost hipHostFree
+#define cudaMemcpyAsync hipMemcpyAsync
+#define cudaMemsetAsync hipMemsetAsync
+
+// hipBLAS (rocBLAS underneath) is column-major like cuBLAS, so the OP_T/OP_N and
+// leading-dimension logic in the Muon Newton-Schulz iteration transfers 1:1. Only
+// the small surface the trainer/Muon path touches is aliased; bodies stay guarded
+// so the nvcc build keeps using cuBLAS unchanged.
+#include <hipblas/hipblas.h>
+
+typedef hipblasHandle_t cublasHandle_t;
+typedef hipblasStatus_t cublasStatus_t;
+typedef hipblasOperation_t cublasOperation_t;
+
+#define CUBLAS_STATUS_SUCCESS HIPBLAS_STATUS_SUCCESS
+#define CUBLAS_OP_T HIPBLAS_OP_T
+#define CUBLAS_OP_N HIPBLAS_OP_N
+#define CUBLAS_POINTER_MODE_HOST HIPBLAS_POINTER_MODE_HOST
+#define CUBLAS_POINTER_MODE_DEVICE HIPBLAS_POINTER_MODE_DEVICE
+
+#define cublasCreate hipblasCreate
+#define cublasDestroy hipblasDestroy
+#define cublasSetStream hipblasSetStream
+#define cublasSetPointerMode hipblasSetPointerMode
+#define cublasSnrm2 hipblasSnrm2
+#define cublasSgemm hipblasSgemm
 
 // The transformer trainers use the CUDA 8-bit packed dot-product intrinsic
 // __dp4a(a, b, c) = c + sum_i (int8)(a>>8i) * (int8)(b>>8i). ROCm exposes the
