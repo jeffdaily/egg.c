@@ -3,8 +3,12 @@
 
 #if USE_MUON == 1
 
+#if defined(__HIP__)
+#include "egg_hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
+#endif
 #include <stdio.h>
 
 // --- Muon Kernels ---

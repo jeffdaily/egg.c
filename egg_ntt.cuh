@@ -26,7 +26,11 @@
  *   int8_t ntt_coeff = ntt_normalize_coefficient(s_ntt[tid], SEQ_LEN);
  */
 
+#if defined(__HIP__)
+#include "egg_hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
+#endif
 
 // ============================================================================
 // Configuration
