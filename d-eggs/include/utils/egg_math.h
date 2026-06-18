@@ -4,8 +4,12 @@
 #include <stdint.h>
 #include "../config.h"
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || defined(__HIPCC__)
+#if defined(__HIP__)
+#include "hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
+#endif
 #define EGG_HOST_DEVICE __host__ __device__
 #define EGG_INLINE __forceinline__
 #else

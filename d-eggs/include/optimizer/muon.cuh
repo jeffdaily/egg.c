@@ -1,8 +1,12 @@
 #ifndef EGG_OPTIMIZER_MUON_CUH
 #define EGG_OPTIMIZER_MUON_CUH
 
+#if defined(__HIP__)
+#include "../utils/hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
+#endif
 #include <stdio.h>
 #include "base.h"
 #include "sgd.cuh"

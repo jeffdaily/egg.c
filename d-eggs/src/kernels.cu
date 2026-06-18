@@ -1,5 +1,9 @@
+#if defined(__HIP__)
+#include "../include/utils/hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
 #include <cub/cub.cuh>
+#endif
 #include "../include/config.h"
 #include "../include/model/layers.cuh"
 #include "../include/math/ntt.cuh"

@@ -1,7 +1,11 @@
 #ifndef EGG_OPTIMIZER_ADAM_CUH
 #define EGG_OPTIMIZER_ADAM_CUH
 
+#if defined(__HIP__)
+#include "../utils/hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
+#endif
 #include "base.h"
 #include "sgd.cuh"
 #include "../utils/egg_math.h"

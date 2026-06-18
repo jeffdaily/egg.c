@@ -2,7 +2,11 @@
 #define EGG_GLOBALS_CUH
 
 #include "config.h"
+#if defined(__HIP__)
+#include "utils/hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
+#endif
 #include <stdint.h>
 
 __constant__ int32_t d_EXP_LUT[SOFTMAX_LUT_SIZE];

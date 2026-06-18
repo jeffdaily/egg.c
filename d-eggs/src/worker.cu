@@ -7,7 +7,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#if defined(__HIP__)
+#include "../include/utils/hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
+#endif
 #include <csignal>
 #include <cmath>
 

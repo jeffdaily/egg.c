@@ -8,7 +8,11 @@
  * All transforms work in-place on shared memory arrays.
  */
 
+#if defined(__HIP__)
+#include "../utils/hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
+#endif
 #include "../config.h"
 
 // ============================================================================

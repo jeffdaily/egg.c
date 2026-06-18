@@ -1,7 +1,11 @@
 #ifndef EGG_OPTIMIZER_SGD_CUH
 #define EGG_OPTIMIZER_SGD_CUH
 
+#if defined(__HIP__)
+#include "../utils/hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
+#endif
 #include "../config.h"
 #include "../model/definitions.h"
 

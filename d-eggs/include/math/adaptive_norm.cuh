@@ -1,8 +1,12 @@
 #ifndef EGG_MATH_ADAPTIVE_NORM_CUH
 #define EGG_MATH_ADAPTIVE_NORM_CUH
 
+#if defined(__HIP__)
+#include "../utils/hip_compat.cuh"
+#else
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
+#endif
 
 // Helper for Adaptive QKV Normalization
 // Normalizes values layer-wise (across all warps/heads)
@@ -16,11 +20,19 @@ __device__ __forceinline__ int8_t adaptive_qkv_normalize(
     int32_t abs_v = abs(val);
 
     // 2. Warp-level reduction to find max(abs_v) in this warp
+#if defined(__HIP__)
+    // Confine the reduction to the 32-lane logical warp on wave64 (gfx90a).
+    for (int offset = 16; offset > 0; offset /= 2) {
+        int32_t other = eggShflDownSync(abs_v, offset);
+        if (other > abs_v) abs_v = other;
+    }
+#else
     unsigned int mask = 0xFFFFFFFF;
     for (int offset = 16; offset > 0; offset /= 2) {
         int32_t other = __shfl_down_sync(mask, abs_v, offset);
         if (other > abs_v) abs_v = other;
     }
+#endif
 
     int warp_id = tid / 32;
     int lane_id = tid % 32;
@@ -65,11 +77,19 @@ __device__ __forceinline__ int8_t adaptive_layer_normalize(
     int32_t abs_v = abs(val);
 
     // 2. Warp-level reduction to find max(abs_v) in this warp
+#if defined(__HIP__)
+    // Confine the reduction to the 32-lane logical warp on wave64 (gfx90a).
+    for (int offset = 16; offset > 0; offset /= 2) {
+        int32_t other = eggShflDownSync(abs_v, offset);
+        if (other > abs_v) abs_v = other;
+    }
+#else
     unsigned int mask = 0xFFFFFFFF;
     for (int offset = 16; offset > 0; offset /= 2) {
         int32_t other = __shfl_down_sync(mask, abs_v, offset);
         if (other > abs_v) abs_v = other;
     }
+#endif
 
     int warp_id = tid / 32;
     int lane_id = tid % 32;
