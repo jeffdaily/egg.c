@@ -115,7 +115,12 @@ using TokenType = uint8_t;
 #  define ROPE_SCALE_BIT 20
 #endif
 #define ROPE_SCALE (1 << ROPE_SCALE_BIT)
-#define ROPE_LUT_SIZE (SEQ_LEN * (HEAD_DIM / 2) * 2)
+// generate_sequence_kernel runs for gen_seed_len + gen_output_len (32 + 64)
+// positions and indexes the RoPE LUT at t, so the table must cover that span,
+// not just SEQ_LEN training positions.
+#define MAX_GEN_LEN 96
+#define ROPE_LUT_MAX_LEN (MAX_GEN_LEN > SEQ_LEN ? MAX_GEN_LEN : SEQ_LEN)
+#define ROPE_LUT_SIZE (ROPE_LUT_MAX_LEN * (HEAD_DIM / 2) * 2)
 
 
 #define SEED_OFF_EMB 0
@@ -386,7 +391,7 @@ int32_t h_EXP_LUT[SOFTMAX_LUT_SIZE];
 __constant__ int8_t d_ACT_LUT[256];
 int8_t h_ACT_LUT[256];
 
-// RoPE Look-Up Table: [SEQ_LEN][HEAD_DIM/2][2 (cos, sin)]
+// RoPE Look-Up Table: [ROPE_LUT_MAX_LEN][HEAD_DIM/2][2 (cos, sin)]
 __device__ int32_t d_ROPE_LUT[ROPE_LUT_SIZE];
 int32_t h_ROPE_LUT[ROPE_LUT_SIZE];
 
@@ -414,7 +419,7 @@ void init_tables() {
         h_ACT_LUT[i] = (int8_t)((val > 127) ? 127 : ((val < -127) ? -127 : val));
     }
 
-    for (int t = 0; t < SEQ_LEN; t++) {
+    for (int t = 0; t < ROPE_LUT_MAX_LEN; t++) {
         for (int i = 0; i < HEAD_DIM / 2; i++) {
             double theta = pow(10000.0, -2.0 * i / HEAD_DIM);
             double alpha = t * theta;
